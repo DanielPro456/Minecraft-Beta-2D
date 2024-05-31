@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft 2D Beta</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #87CEEB;
+        }
+
+        #game-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        #gameCanvas {
+            border: 1px solid #000;
+            background-color: #fff;
+        }
+
+        #crafting {
+            margin-top: 10px;
+            border: 1px solid #000;
+            padding: 10px;
+            background-color: #f0f0f0;
+        }
+
+        #crafting-buttons button {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        #hud {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        #inventory, #armor {
+            border: 1px solid #000;
+            padding: 10px;
+            background-color: #f0f0f0;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        #fullscreen-btn, #settings-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1;
+        }
+
+        #settings-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 1px solid #000;
+            background-color: #fff;
+            padding: 20px;
+            z-index: 2;
+        }
+
+        #settings-modal button {
+            display: block;
+            margin-top: 10px;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+        }
+
+        .controls button {
+            width: 50px;
+            height: 50px;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="fullscreen-btn">
+        <button onclick="toggleFullscreen()">Fullscreen</button>
+    </div>
+    <div id="settings-btn">
+        <button onclick="toggleSettings()">Settings</button>
+    </div>
+    <div id="settings-modal">
+        <h3>Settings</h3>
+        <button onclick="setEdition('JavaScript')">JavaScript Edition</button>
+        <button onclick="setEdition('Bedrock')">Bedrock Edition</button>
+        <button onclick="closeSettings()">Close</button>
+    </div>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="crafting">
+            <h3>Crafting</h3>
+            <div id="crafting-buttons">
+                <button id="craftPlanksButton">Craft Planks</button>
+                <button id="craftTableButton">Craft Crafting Table</button>
+                <button id="craftStickButton">Craft Sticks</button>
+                <button id="craftLeatherArmorButton" class="hidden">Craft Leather Armor</button>
+                <button id="craftChainMailButton" class="hidden">Craft Chain Mail Armor</button>
+                <button id="craftIronArmorButton" class="hidden">Craft Iron Armor</button>
+                <button id="craftDiamondArmorButton" class="hidden">Craft Diamond Armor</button>
+                <button id="craftNetheriteArmorButton" class="hidden">Craft Netherite Armor</button>
+                <button id="craftDragonEggButton" class="hidden">Craft Dragon Egg</button>
+                <button onclick="goToNether()">Go to Nether</button>
+                <button onclick="goToEnd()">Go to The End</button>
+                <button onclick="goToOverworld()">Back to Overworld</button>
+            </div>
+        </div>
+        <div id="hud">
+            <div id="inventory">
+                <h3>Inventário</h3>
+                <div id="inventory-slots"></div>
+            </div>
+            <div id="armor">
+                <h3>Equipamentos</h3>
+                <div id="armor-slots"></div>
+            </div>
+        </div>
+    </div>
+    <div class="controls" id="bedrock-controls">
+        <button onclick="movePlayer('up')">↑</button><br>
+        <button onclick="movePlayer('left')">←</button>
+        <button onclick="movePlayer('down')">↓</button>
+        <button onclick="movePlayer('right')">→</button>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 800;
+        canvas.height = 600;
+
+        const TILE_SIZE = 40;
+        const rows = canvas.height / TILE_SIZE;
+        const cols = canvas.width / TILE_SIZE;
+
+        let inventory = {
+            wood: 0,
+            planks: 0,
+            stone: 0,
+            iron: 0,
+            diamond: 0,
+            netherite: 0,
+            leather: 0,
+            craftingTable: 0,
+            chainMail: 0,
+            ironArmor: 0,
+            diamondArmor: 0,
+            netheriteArmor: 0,
+            dragonEgg: 0,
+            sword: 0,
+            pickaxe: 0,
+            axe: 0
+            
+        };
+
+        let player = {
+            x: 5,
+            y: 5,
+            world: 'overworld' // Possible values: 'overworld', 'nether', 'end'
+        };
+
+        let collecting = false;
+
+        let map = generateMap('overworld');
+        let edition = 'JavaScript';
+
+        function generateMap(world) {
+            const newMap = [];
+            for (let y = 0; y < rows; y++) {
+                const row = [];
+                for (let x = 0; x < cols; x++) {
+                    let type;
+                    switch (world) {
+                        case 'overworld':
+                            if (y > rows / 2) {
+                                type = Math.random() < 0.1 ? 'diamond' : (Math.random() < 0.2 ? 'iron' : 'stone');
+                            } else {
+                                type = Math.random() < 0.4 ? 'wood' : 'stone';
+                            }
+                            break;
+                        case 'nether':
+                            type = Math.random() < 0.1 ? 'netherite' : (Math.random() < 0.2 ? 'gold' : 'netherrack');
+                            break;
+                        case 'end':
+                            type = Math.random() < 0.1 ? 'endRock' : 'endStone';
+                            break;
+                    }
+                    row.push({
+                        type: type,
+                        mined: false,
+                        hits: 0,
+                        maxHits: type === 'wood' ? 1 : type === 'stone' ? 2 : type === 'iron' ? 4 : 5
+                    });
+                }
+                newMap.push(row);
+            }
+            return newMap;
+        }
+
+        function drawMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    if (!map[y][x].mined) {
+                        switch (map[y][x].type) {
+                            case 'wood':
+                                ctx.fillStyle = '#8B4513'; // Marrom escuro
+                                break;
+                            case 'stone':
+                                ctx.fillStyle = '#A9A9A9'; // Cinza
+                                break;
+                            case 'iron':
+                                ctx.fillStyle = '#C0C0C0'; // Cinza claro
+                                break;
+                            case 'diamond':
+                                ctx.fillStyle = '#ADD8E6'; // Cinza com azul claro
+                                break;
+                            case 'gold':
+                                ctx.fillStyle = '#FFD700'; // Ouro
+                                break;
+                            case 'netherite':
+                                ctx.fillStyle = '#7C6A63'; // Netherite
+                                break;
+                            case 'netherrack':
+                                ctx.fillStyle = '#FF5733'; // Netherrack
+                                break;
+                            case 'endRock':
+                                ctx.fillStyle = '#9370DB'; // End rock
+                                break;
+                            case 'endStone':
+                                ctx.fillStyle = '#D8BFD8'; // End stone
+                                break;
+                        }
+                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    } else {
+                        ctx.clearRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    }
+                }
+            }
+            ctx.fillStyle = '#FF0000';
+            ctx.fillRect(player.x * TILE_SIZE, player.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        }
+
+        function updateInventory() {
+            const inventorySlots = document.getElementById('inventory-slots');
+            inventorySlots.innerHTML = `
+                <div class="inventory-slot">Wood: ${inventory.wood}</div>
+                <div class="inventory-slot">Planks: ${inventory.planks}</div>
+                <div class="inventory-slot">Stone: ${inventory.stone}</div>
+                <div class="inventory-slot">Iron: ${inventory.iron}</div>
+                <div class="inventory-slot">Diamond: ${inventory.diamond}</div>
+                <div class="inventory-slot">Netherite: ${inventory.netherite}</div>
+                <div class="inventory-slot">Leather: ${inventory.leather}</div>
+                <div class="inventory-slot">Crafting Table: ${inventory.craftingTable}</div>
+                <div class="inventory-slot">Chain Mail: ${inventory.chainMail}</div>
+                <div class="inventory-slot">Iron Armor: ${inventory.ironArmor}</div>
+                <div class="inventory-slot">Diamond Armor: ${inventory.diamondArmor}</div>
+                <div class="inventory-slot">Netherite Armor: ${inventory.netheriteArmor}</div>
+                <div class="inventory-slot">Dragon Egg: ${inventory.dragonEgg}</div>
+                <div class="inventory-slot">Netherite Sword: ${inventory.netheritesword}</div>
+                <div class="inventory-slot">Netherite Pickaxe ${inventory.netheritepickaxe}</div>
+                <div class="inventory-slot">Netherite Axe ${inventory.netheriteaxe}</div>
+            `;
+        }
+
+        function canCraft(recipe) {
+            for (const resource in recipe) {
+                if (inventory[resource] < recipe[resource]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function consumeResources(recipe) {
+            for (const resource in recipe) {
+                inventory[resource] -= recipe[resource];
+            }
+            updateInventory();
+        }
+
+        function handleCrafting(recipe, itemName, addItem) {
+            if (canCraft(recipe)) {
+                consumeResources(recipe);
+                alert(`Você criou um(a) ${itemName}!`);
+                addItem();
+            } else {
+                alert('Recursos insuficientes para craftar!');
+            }
+        }
+
+        document.addEventListener('keydown', (event) => {
+            switch (event.key) {
+                case 'w':
+                    player.y = Math.max(0, player.y - 1);
+                    collecting = false;
+                    break;
+                case 's':
+                    player.y = Math.min(rows - 1, player.y + 1);
+                    collecting = false;
+                    break;
+                case 'a':
+                    player.x = Math.max(0, player.x - 1);
+                    collecting = false;
+                    break;
+                case 'd':
+                    player.x = Math.min(cols - 1, player.x + 1);
+                    collecting = false;
+                    break;
+                case 'e':
+                    document.getElementById('inventory').classList.toggle('hidden');
+                    break;
+                
+            }
+            drawMap();
+        });
+
+        function collectResource() {
+            if (!collecting) {
+                const block = map[player.y][player.x];
+                block.hits++;
+                if (block.hits >= block.maxHits) {
+                    switch (block.type) {
+                        case 'wood':
+                            inventory.wood++;
+                            break;
+                        case 'stone':
+                            inventory.stone++;
+                            break;
+                        case 'iron':
+                            inventory.iron++;
+                            break;
+                        case 'diamond':
+                            inventory.diamond++;
+                            break;
+                        case 'gold':
+                            inventory.gold++;
+                            break;
+                        case 'netherite':
+                            inventory.netherite++;
+                            break;
+                        case 'endRock':
+                            inventory.endRock++;
+                            break;
+                    }
+                    block.mined = true;
+                    collecting = false;
+                    updateInventory();
+                }
+                drawMap();
+            }
+        }
+
+        setInterval(collectResource, 1000); // Tenta coletar recursos a cada segundo
+
+        document.getElementById('craftPlanksButton').addEventListener('click', () => {
+            handleCrafting({ wood: 1 }, 'Planks', () => inventory.planks += 4);
+        });
+
+        document.getElementById('craftTableButton').addEventListener('click', () => {
+            handleCrafting({ planks: 4 }, 'Crafting Table', () => inventory.craftingTable += 1);
+        });
+
+        document.getElementById('craftStickButton').addEventListener('click', () => {
+            handleCrafting({ planks: 2 }, 'Sticks', () => inventory.sticks += 4);
+        });
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        function toggleSettings() {
+            const modal = document.getElementById('settings-modal');
+            modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function closeSettings() {
+            document.getElementById('settings-modal').style.display = 'none';
+        }
+
+        function setEdition(selectedEdition) {
+            edition = selectedEdition;
+            closeSettings();
+            if (edition === 'JavaScript') {
+                document.querySelector('.controls').style.display = 'none';
+            } else if (edition === 'Bedrock') {
+                document.querySelector('.controls').style.display = 'block';
+            }
+        }
+
+        function goToNether() {
+            player.world = 'nether';
+            map = generateMap('nether');
+            document.getElementById('craftLeatherArmorButton').classList.add('hidden');
+            document.getElementById('craftChainMailButton').classList.add('hidden');
+            document.getElementById('craftIronArmorButton').classList.add('hidden');
+            document.getElementById('craftDiamondArmorButton').classList.add('hidden');
+            document.getElementById('craftNetheriteArmorButton').classList.add('hidden');
+            drawMap();
+        }
+
+        function goToEnd() {
+            player.world = 'end';
+            map = generateMap('end');
+            document.getElementById('craftLeatherArmorButton').classList.add('hidden');
+            document.getElementById('craftChainMailButton').classList.add('hidden');
+            document.getElementById('craftIronArmorButton').classList.add('hidden');
+            document.getElementById('craftDiamondArmorButton').classList.add('hidden');
+            document.getElementById('craftNetheriteArmorButton').classList.add('hidden');
+            drawMap();
+        }
+
+        function goToOverworld() {
+            player.world = 'overworld';
+            map = generateMap('overworld');
+            drawMap();
+        }
+
+        function movePlayer(direction) {
+            switch (direction) {
+                case 'up':
+                    player.y = Math.max(0, player.y - 1);
+                    break;
+                case 'down':
+                    player.y = Math.min(rows - 1, player.y + 1);
+                    break;
+                case 'left':
+                    player.x = Math.max(0, player.x - 1);
+                    break;
+                case 'right':
+                    player.x = Math.min(cols - 1, player.x + 1);
+                    break;
+            }
+            drawMap();
+        }
+
+        drawMap();
+        updateInventory();
+    </script>
+</body>
+</html>
+
+
+
